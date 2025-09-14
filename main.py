@@ -1,96 +1,112 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
+from typing import List
+
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
 from langchain_chroma import Chroma
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.runnables import RunnablePassthrough, RunnableParallel
-from langchain_core.output_parsers import StrOutputParser
-from fastapi.staticfiles import StaticFiles
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+#from langchain_core.runnables import RunnablePassthrough
+#from langchain_core.output_parsers import StrOutputParser
+from langchain.chains import create_history_aware_retriever, create_retrieval_chain
+from langchain.chains.combine_documents import create_stuff_documents_chain
 from dotenv import load_dotenv
+import os
 
-load_dotenv() 
-try: 
-    #OpenAI setup
-    embeddings = OpenAIEmbeddings(model = "text-embedding-3-small")
-    llm = ChatOpenAI(model = "gpt-4o")
+from fastapi.middleware.cors import CORSMiddleware
 
-    #vector store loading
-    Vector_store = Chroma(persist_directory = "./db_openai", embedding_function = embeddings)
+load_dotenv()
 
-    #retrieve function
-    retriever = Vector_store.as_retriever(search_kwargs = {"k":1})
+def load_chain():
+    try:
+        llm = ChatOpenAI(model = "gpt-4o")
+        embeddings = OpenAIEmbeddings(model = "text-embedding-3-small")
 
-except Exception as e:
-    print(f"Error during setup: {e}")
-
-    retriever = None
+        if not os.path.exists("./db_openai"):
+            raise Exception("Vector store directory not found. Please run database.py to create the vector store.")
+        vector_store = Chroma(persist_directory = "./db_openai", embedding_function=embeddings) 
+        retriever  = vector_store.as_retriever (search_kwargs = {"k":1})
 
 
-# Define the RAG chain with prompt template
-template = """
-You are a helpful and witty meme expert. Your task is to identify a meme based on the user's description.
-Use the following retrieved context to answer the question. If you don't know the answer, just say you don't know.
+        condenser_prompt = ChatPromptTemplate.from_messages([
+            ("system","Given a chat history and the latest user question, formulate a standalone question that can be understood without the chat history. Do NOT answer the question, just reformulate it if needed and otherwise return it as is." ),
+            ("human", "{chat_history}\n\n {input}")
+        ])
 
-CONTEXT: {context}
-QUESTION: {question}
-ANSWER:
-"""
-prompt = ChatPromptTemplate.from_template(template)
-
-RAG_chain =(
-RunnableParallel({"context": retriever, "question": RunnablePassthrough()})
-.assign(Answer = (RunnablePassthrough() |prompt | llm | StrOutputParser() )))
+        history_aware_retriever = create_history_aware_retriever(
+            llm = llm, 
+            retriever = retriever,
+            prompt = condenser_prompt
+        )
 
 
-def process_chain_output(chain_output):
-    return {
-        "answer": chain_output["Answer"],
-        "filename": chain_output["context"][0].metadata["filename"],
-    }
+        qa_prompt = ChatPromptTemplate.from_messages([
+            ("system", "You are a helpful and witty meme expert. Answer the user's question based only on the following context:\n\n{context}"),
+            ("human", "{input}")
+        ])
 
-final_chain = RAG_chain | process_chain_output
+        question_answer_chain = create_stuff_documents_chain(llm, qa_prompt)
 
+        rag_chain = create_retrieval_chain(history_aware_retriever, question_answer_chain)
 
-print("--- Running the chain with a test query ---")
-test_query = "Balakrishna"
-result = final_chain.invoke(test_query)
+        return rag_chain
+    
+    except Exception as e:
+        print(f"Error during chain setup: {e}")
+        return None 
+    
 
-# 3. Print the final dictionary output
-print(result)
-
-##Fast API setup
+final_chain = load_chain()
 
 app = FastAPI()
 
-
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allows all origins
+    allow_origins=["*"],
     allow_credentials=True,
-    allow_methods=["*"],  # Allows all methods
-    allow_headers=["*"],  # Allows all headers
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
+# Pydantic Models for Request Body
+class ChatMessage(BaseModel):
+    role: str
+    content: str
+
+class ChatQuery(BaseModel):
+    question: str
+    chat_history: List[ChatMessage]
+
+# API Endpoint
+@app.post("/chat")
+async def chat_endpoint(query: ChatQuery):
+    if not final_chain:
+        raise HTTPException(status_code=500, detail="Chat chain is not initialized.")
+
+    # Format history for LangChain
+    chat_history_messages = []
+    for msg in query.chat_history:
+        chat_history_messages.append((msg.role, msg.content))
+
+    # Invoke the modern chain
+    response = final_chain.invoke({
+        "input": query.question,
+        "chat_history": chat_history_messages
+    })
+    
+    answer = response["answer"]
+    # The retrieved documents are now in the 'context' key
+    source_document = response["context"][0]
+    filename = source_document.metadata["filename"]
+    
+    return {
+        "answer": answer,
+        "filename": filename
+    }
 
 
-app.mount("/static", StaticFiles(directory="meme_templates"), name="static")
+    
 
 
-class Query(BaseModel):
-    text: str
 
-@app.get("/")
-async def read_root():
-    return FileResponse('./frontend/index.html')
 
-# 3. FIX: Attached the POST decorator to its function
-@app.post("/find-meme")
-async def find_meme_endpoint(query: Query):
-    if not retriever:
-        return {"error": "Server is not ready. Check logs."}
-    response = final_chain.invoke(query.text)
-    return {"response": response}
 
-            
