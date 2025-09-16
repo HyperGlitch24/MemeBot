@@ -7,7 +7,7 @@ st.set_page_config(page_title = "MemeBot", page_icon = "🤖")
 st.title("MemeBot 🤖")
 
 
-BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000/chat")
+BACKEND_URL = os.getenv("BACKEND_URL", "http://127.0.0.1:8000/chat")
 
 IMAGE_DIR = "meme_templates"
 

@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# print("API Key Loaded:", os.getenv("GOOGLE_API_KEY")) 
+
 
 
 llm = ChatOpenAI(model = "gpt-4o")
