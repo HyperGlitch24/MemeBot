@@ -12,3 +12,4 @@ EXPOSE 8501
 EXPOSE 8000
 
 CMD ["bash", "startup.sh"]
+
