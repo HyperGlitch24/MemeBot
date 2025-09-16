@@ -1,9 +1,23 @@
 import json
 from langchain_openai import OpenAIEmbeddings 
 from langchain_chroma import Chroma
+import os
 from dotenv import load_dotenv
 
-load_dotenv()  # Load environment variables from .env file
+#load_dotenv()  # Load environment variables from .env file
+
+if os.path.exists(".env"):
+    from dotenv import load_dotenv
+    load_dotenv()
+
+openai_api_key = os.environ.get("OPENAI_API_KEY")
+if not openai_api_key:
+    raise ValueError("OPENAI_API_KEY not found in environment variables")
+
+
+openai_api_key = openai_api_key.strip()
+
+
 
 # 1. Load your meme data from the JSON file
 with open('memes.json', 'r') as f:
@@ -15,7 +29,7 @@ descriptions = [item['description'] for item in meme_data]
 metadatas = [{'name': item['name'], 'filename': item['filename']} for item in meme_data]
 
 # 3. Initialize the embedding model
-embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
+embeddings = OpenAIEmbeddings(model="text-embedding-3-small", openai_api_key=openai_api_key)
 
 # 4. Create a Chroma vector store and ingest the data
 # This will create a 'db' folder for persistence

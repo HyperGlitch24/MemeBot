@@ -14,12 +14,24 @@ import os
 
 from fastapi.middleware.cors import CORSMiddleware
 
-load_dotenv()
+#load_dotenv()
+
+if os.path.exists(".env"):
+    from dotenv import load_dotenv
+    load_dotenv()
+
+openai_api_key = os.environ.get("OPENAI_API_KEY")
+if not openai_api_key:
+    raise ValueError("OPENAI_API_KEY not found in environment variables")
+
+openai_api_key = openai_api_key.strip()
+
+
 
 def load_chain():
     try:
-        llm = ChatOpenAI(model = "gpt-4o")
-        embeddings = OpenAIEmbeddings(model = "text-embedding-3-small")
+        llm = ChatOpenAI(model = "gpt-4o", openai_api_key=openai_api_key)
+        embeddings = OpenAIEmbeddings(model = "text-embedding-3-small", openai_api_key=openai_api_key)
 
         if not os.path.exists("./db_openai"):
             raise Exception("Vector store directory not found. Please run database.py to create the vector store.")
