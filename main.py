@@ -89,6 +89,12 @@ class ChatQuery(BaseModel):
     chat_history: List[ChatMessage]
 
 # API Endpoint
+
+@app.get("/")
+def index():
+    return {"message": "API is running. POST to /chat for chat queries."}
+
+
 @app.post("/chat")
 async def chat_endpoint(query: ChatQuery):
     if not final_chain:
