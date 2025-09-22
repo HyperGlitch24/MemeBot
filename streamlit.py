@@ -11,6 +11,8 @@ st.title("MemeBot 🤖")
 BACKEND_URL = "http://127.0.0.1:8000/chat"
 
 IMAGE_DIR = "meme_templates"
+#S3_BUCKET = "memebot-templates-2025"
+#IMAGE_DIR = f"https://{S3_BUCKET}.s3.amazonaws.com"
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
